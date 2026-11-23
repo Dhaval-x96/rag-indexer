@@ -6,6 +6,8 @@ from git import Repo
 from psycopg2.extras import execute_values
 from sentence_transformers import SentenceTransformer
 import shutil
+from pydantic import BaseModel
+import requests
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
@@ -25,9 +27,91 @@ SKIP_SUFFIXES = (".min.js", ".min.css")
 CHUNK_SIZE=50
 OVERLAP=10
 
+MAX_DISTANCE = 0.7
 
 
 app = FastAPI()
+
+
+class AskRequest(BaseModel):
+    question: str
+
+
+
+@app.post("/index/{repo_id}", status_code=202)
+def start_index(repo_id:str, background_tasks: BackgroundTasks):
+    background_tasks.add_task(index_repo, repo_id)
+    return {"status": "accepted", "repo_id": repo_id}
+
+
+@app.post("/repo/{repo_id}/ask")
+def ask_question(repo_id: str, request: AskRequest):
+    vector = model.encode(request.question).tolist()
+    conn = getConnection()
+
+    try:
+        with conn, conn.cursor() as cursor:
+            cursor.execute("SELECT f.file_path, c.start_line, c.end_line, " \
+            " c.chunk_text, e.embedding <=> %s::vector as distance FROM rag.embedding e JOIN rag.chunks c " \
+            " ON  e.chunk_id = c.chunk_id JOIN rag.files f ON f.file_id = c.file_id " \
+            " WHERE f.repo_id = %s order by distance limit 5", (vector, repo_id))
+            rows = cursor.fetchall()
+    finally:
+        conn.close()
+        
+
+    snippets = [
+            {"file_path": p,
+              "start_line":s,
+              "end_line":e,
+              "code":text,
+              "distance":d
+              }
+           for p, s, e, text, d in rows
+        ]
+
+    ## USE FOR COST OPTIMIZATION
+    ## ADD THREADSOLD FOR FETCHING ACCURATE  
+    if not snippets or snippets[0]["distance"] > MAX_DISTANCE:
+        return {
+            "question":request.question,
+            "answer":"I don't know. No relevant code found in this repo.",
+            "snippets":[]
+        }
+    answer = generate_answer(request.question, snippets)
+    return {"question": request.question, "answer": answer, "snippets": snippets}
+
+
+
+
+def generate_answer(question, snippets):
+    context = "\n\n".join(
+               f"[{i}] {s['file_path']} (lines {s['start_line']}-{s['end_line']})\n{s['code']}"
+               for i, s in enumerate(snippets, start=1)
+    )
+
+    token = os.getenv("ANTHROPIC_API_KEY")
+    response = requests.post( "https://api.anthropic.com/v1/messages",
+                  headers={
+                        "Content-Type": "application/json",
+                        "x-api-key": token,
+                        "anthropic-version": "2026-10-21",
+                    },
+                   json={
+                       "model": "claude-haiku-5-5",
+                        "max_tokens": 1024,
+                         "system": (
+                            "You explain codebases. Answer only from the code snippets given. "
+                            "Cite the snippets you used like [1] or [2]. "
+                            "If the snippets don't contain the answer, say you don't know."
+                        ),
+                        "messages": [
+                            {"role": "user", "content": f"Code snippets:\n\n{context}\n\nQuestion: {question}"}
+                        ],
+                   },timeout=60)
+    response.raise_for_status()
+    return "".join(b["text"] for b in response.json()["content"] if b["type"] == "text")
+    
 
 def index_repo(repo_id: str):
     print(f"Indexing repository {repo_id}...")
@@ -153,14 +237,4 @@ def save_files(cursor, repo_id, paths):
             [(repo_id, path,ext) for path, ext in paths],
             fetch=True
         )
-
-    
-
-
-
-
-@app.post("/index/{repo_id}", status_code=202)
-def start_index(repo_id:str, background_tasks: BackgroundTasks):
-    background_tasks.add_task(index_repo, repo_id)
-    return {"status": "accepted", "repo_id": repo_id}
 
