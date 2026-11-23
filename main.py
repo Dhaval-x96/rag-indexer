@@ -23,10 +23,8 @@ SKIP_DIRS = {
         "coverage", ".next", "vendor",".github",
     }
 SKIP_SUFFIXES = (".min.js", ".min.css")
-
 CHUNK_SIZE=50
 OVERLAP=10
-
 MAX_DISTANCE = 0.7
 
 
@@ -46,9 +44,24 @@ def start_index(repo_id:str, background_tasks: BackgroundTasks):
 
 @app.post("/repo/{repo_id}/ask")
 def ask_question(repo_id: str, request: AskRequest):
+    snippets = search_chunk(repo_id, request)
+    
+    ## USE FOR COST OPTIMIZATION
+    ## ADD THREADSOLD FOR FETCHING ACCURATE  
+    if not snippets or snippets[0]["distance"] > MAX_DISTANCE:
+        return {
+            "question":request.question,
+            "answer":"I don't know. No relevant code found in this repo.",
+            "snippets":[]
+        }
+    
+    answer = generate_answer(request.question, snippets)
+    return {"question": request.question, "answer": answer, "snippets": snippets}
+
+
+def search_chunk(repo_id: str, request: AskRequest):
     vector = model.encode(request.question).tolist()
     conn = getConnection()
-
     try:
         with conn, conn.cursor() as cursor:
             cursor.execute("SELECT f.file_path, c.start_line, c.end_line, " \
@@ -58,31 +71,16 @@ def ask_question(repo_id: str, request: AskRequest):
             rows = cursor.fetchall()
     finally:
         conn.close()
+
+    return [
+        {"file_path": p,
+         "start_line": s,
+         "end_line": e,
+         "code": text,
+         "distance": d}
+        for p, s, e, text, d in rows
+    ]
         
-
-    snippets = [
-            {"file_path": p,
-              "start_line":s,
-              "end_line":e,
-              "code":text,
-              "distance":d
-              }
-           for p, s, e, text, d in rows
-        ]
-
-    ## USE FOR COST OPTIMIZATION
-    ## ADD THREADSOLD FOR FETCHING ACCURATE  
-    if not snippets or snippets[0]["distance"] > MAX_DISTANCE:
-        return {
-            "question":request.question,
-            "answer":"I don't know. No relevant code found in this repo.",
-            "snippets":[]
-        }
-    answer = generate_answer(request.question, snippets)
-    return {"question": request.question, "answer": answer, "snippets": snippets}
-
-
-
 
 def generate_answer(question, snippets):
     context = "\n\n".join(
@@ -99,23 +97,31 @@ def generate_answer(question, snippets):
                     },
                    json={
                        "model": "claude-haiku-5-5",
-                        "max_tokens": 1024,
-                         "system": (
+                        "max_tokens": 2048,
+                        "system":
                             "You explain codebases. Answer only from the code snippets given. "
                             "Cite the snippets you used like [1] or [2]. "
-                            "If the snippets don't contain the answer, say you don't know."
-                        ),
+                            "If the snippets don't contain the answer, say you don't know. "
+                            "Match the length to the question: a few sentences for simple "
+                            "questions, more detail with steps for complex ones. "
+                            "Don't pad the answer.",
                         "messages": [
                             {"role": "user", "content": f"Code snippets:\n\n{context}\n\nQuestion: {question}"}
                         ],
                    },timeout=60)
     response.raise_for_status()
-    return "".join(b["text"] for b in response.json()["content"] if b["type"] == "text")
+
+    data = response.json()
+    answer = "".join(b["text"] for b in data["content"] if b["type"] == "text")
+    if data.get("stop_reason") == "max_tokens":
+        answer += "\n\n[Answer was cut off. Ask a narrower question for the rest.]"
+    return answer
     
 
 def index_repo(repo_id: str):
     print(f"Indexing repository {repo_id}...")
     conn = getConnection()
+    temp_dir = None
     
     try:
          ## tX1
@@ -188,8 +194,8 @@ def save_chunks(cursor, temp_dir, file_rows):
 
     rows = execute_values(
                 cursor,
-                "INSERT INTO rag.chunks (file_id, chunk_text, chunk_index, start_line, end_line) VALUES %s" \
-                "RETURNING chunk_id, chunk_text",
+                "INSERT INTO rag.chunks (file_id, chunk_text, chunk_index, start_line, end_line) VALUES %s " \
+                " RETURNING chunk_id, chunk_text",
                 chunk_rows,
                 page_size=500,
                 fetch=True
