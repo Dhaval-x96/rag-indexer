@@ -25,7 +25,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
 
-from main import CHUNK_SIZE, MAX_DISTANCE, OVERLAP, AskRequest, search_chunk
+from main import (CHUNK_SIZE, KEYWORD_WEIGHT, MAX_DISTANCE, OVERLAP, RRF_K, AskRequest,
+                  hybrid_search, search_chunk)
 
 REPO_ID = "8f34f915-9c6a-4942-a4bc-bc823c66190f"
 
@@ -115,14 +116,19 @@ EVAL_SET: list[EvalCase] = [
 ]
 
 
-def run(cases: list[EvalCase]) -> dict[str, dict]:
+def run(cases: list[EvalCase], mode: str = "hybrid") -> dict[str, dict]:
     """Run every case, print the report, and return per-category stats."""
     by_cat: dict[str, list[tuple[int | None, float, bool]]] = defaultdict(list)
 
     for case in cases:
-        snippets = search_chunk(REPO_ID, AskRequest(question=case.question))
+        request = AskRequest(question=case.question)
+        if mode == "hybrid":
+            # Same as ask_question: gate on the top vector distance, not the fused list.
+            snippets, top_dist = hybrid_search(REPO_ID, request)
+        else:
+            snippets = search_chunk(REPO_ID, request)
+            top_dist = snippets[0]["distance"] if snippets else 1.0
         paths = [s["file_path"] for s in snippets]
-        top_dist = snippets[0]["distance"] if snippets else 1.0
         gated = top_dist > MAX_DISTANCE  # ask_question would answer "I don't know"
 
         if case.expected:
@@ -221,8 +227,11 @@ def render_report(history: list[dict]) -> str:
         "```bash",
         'python evals.py --note "what changed"                              # small set (built into evals.py)',
         'python evals.py --file eval_questions.jsonl --note "what changed"  # full set',
+        'python evals.py --mode vector --note "what changed"                # vector search only',
         "```",
         "",
+        "- **Mode**: `hybrid` = `hybrid_search` (vector + keyword, RRF), what `ask_question` uses. "
+        "`vector` = `search_chunk` only. Rows before the mode column existed are `vector`.",
         "- **Positive pass**: the expected file is in the top 5 results AND the top distance is <= `MAX_DISTANCE`.",
         "- **Negative pass**: the question is about something not in the repo, and the top distance is > `MAX_DISTANCE`, so the API answers \"I don't know\".",
         "- **Recall@5** ignores the distance gate. **MRR** is the mean of 1/rank of the first correct file.",
@@ -256,8 +265,8 @@ def render_report(history: list[dict]) -> str:
             "",
             "### History (newest first)",
             "",
-            "| # | Date | Commit | MAX_DISTANCE | Positive pass | Δ | Negative pass | Δ | Note |",
-            "|---:|---|---|---:|---:|---:|---:|---:|---|",
+            "| # | Date | Commit | Mode | MAX_DISTANCE | Positive pass | Δ | Negative pass | Δ | Note |",
+            "|---:|---|---|---|---:|---:|---:|---:|---:|---|",
         ]
         rows = []
         prev: tuple[tuple[int, int], tuple[int, int]] | None = None
@@ -268,7 +277,8 @@ def render_report(history: list[dict]) -> str:
             if r.get("backfilled"):
                 note = f"{note} (backfilled)".strip()
             rows.append(
-                f"| {i} | {r['date']} | `{r['commit']}` | {r['config'].get('MAX_DISTANCE', '-')} | "
+                f"| {i} | {r['date']} | `{r['commit']}` | {r['config'].get('mode', 'vector')} | "
+                f"{r['config'].get('MAX_DISTANCE', '-')} | "
                 f"{pp}/{pt} = {pct(pp, pt)} | {delta(pos, prev[0] if prev else None)} | "
                 f"{np_}/{nt} = {pct(np_, nt)} | {delta(neg, prev[1] if prev else None)} | {note} |"
             )
@@ -277,13 +287,18 @@ def render_report(history: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def save_run(categories: dict[str, dict], dataset: str, n_questions: int, note: str) -> None:
+def save_run(categories: dict[str, dict], dataset: str, n_questions: int, note: str,
+             mode: str) -> None:
+    config: dict = {"mode": mode, "MAX_DISTANCE": MAX_DISTANCE,
+                    "CHUNK_SIZE": CHUNK_SIZE, "OVERLAP": OVERLAP}
+    if mode == "hybrid":
+        config |= {"RRF_K": RRF_K, "KEYWORD_WEIGHT": KEYWORD_WEIGHT}
     record = {
         "date": datetime.now().isoformat(timespec="seconds"),
         "commit": git_commit(),
         "dataset": dataset,
         "n_questions": n_questions,
-        "config": {"MAX_DISTANCE": MAX_DISTANCE, "CHUNK_SIZE": CHUNK_SIZE, "OVERLAP": OVERLAP},
+        "config": config,
         "note": note,
         "categories": categories,
     }
@@ -299,13 +314,15 @@ def main() -> None:
     parser.add_argument("--file", help="JSONL question file (default: EVAL_SET in this file)")
     parser.add_argument("--note", default="", help="What changed since the last run")
     parser.add_argument("--no-save", action="store_true", help="Only print, do not update history")
+    parser.add_argument("--mode", choices=["hybrid", "vector"], default="hybrid",
+                        help="hybrid_search (what ask_question uses) or search_chunk only")
     args = parser.parse_args()
 
     cases = load_cases(args.file) if args.file else EVAL_SET
     dataset = Path(args.file).name if args.file else "evals.py"
-    categories = run(cases)
+    categories = run(cases, args.mode)
     if not args.no_save:
-        save_run(categories, dataset, len(cases), args.note)
+        save_run(categories, dataset, len(cases), args.note, args.mode)
 
 
 if __name__ == "__main__":
