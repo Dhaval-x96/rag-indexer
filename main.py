@@ -143,7 +143,7 @@ def key_search(repo_id,question, limit=20):
                        ts_rank(c.text_search, q) AS score
                 FROM rag.chunks c
                 JOIN rag.files f ON f.file_id = c.file_id,
-                     to_tsquery('english', replace(plainto_tsquery('english', %s)::text, '&', '|')) q
+                     to_tsquery('simple', replace(plainto_tsquery('english', %s)::text, '&', '|')) q
                 WHERE f.repo_id = %s
                   AND c.text_search @@ q
                 ORDER BY score DESC
