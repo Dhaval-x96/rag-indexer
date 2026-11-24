@@ -25,7 +25,7 @@ SKIP_DIRS = {
 SKIP_SUFFIXES = (".min.js", ".min.css")
 CHUNK_SIZE=50
 OVERLAP=10
-MAX_DISTANCE = 0.7
+MAX_DISTANCE = 0.6
 
 
 app = FastAPI()
@@ -67,20 +67,56 @@ def search_chunk(repo_id: str, request: AskRequest):
             cursor.execute("SELECT f.file_path, c.start_line, c.end_line, " \
             " c.chunk_text, e.embedding <=> %s::vector as distance FROM rag.embedding e JOIN rag.chunks c " \
             " ON  e.chunk_id = c.chunk_id JOIN rag.files f ON f.file_id = c.file_id " \
-            " WHERE f.repo_id = %s order by distance limit 5", (vector, repo_id))
+            " WHERE f.repo_id = %s order by distance limit 30", (vector, repo_id))
             rows = cursor.fetchall()
     finally:
         conn.close()
 
-    return [
-        {"file_path": p,
-         "start_line": s,
-         "end_line": e,
-         "code": text,
-         "distance": d}
-        for p, s, e, text, d in rows
-    ]
-        
+    # Keep only the best chunk per file, so one file can't fill all 5 slots.
+    snippets = []
+    seen = set()
+    for p, s, e, text, d in rows:
+        if p in seen:
+            continue
+        seen.add(p)
+        snippets.append({"file_path": p,
+                         "start_line": s,
+                         "end_line": e,
+                         "code": text,
+                         "distance": d})
+        if len(snippets) == 5:
+            break
+    return snippets
+
+
+
+def key_search(repo_id,question, limit=20):
+    conn = getConnection()
+    # Steps:
+    # 1. plainto_tsquery: split question into words -> 'bash' & 'sandbox'
+    # 2. replace & with |: any word can match -> 'bash' | 'sandbox'
+    # 3. @@: keep chunks that contain at least one word (uses GIN index)
+    # 4. ts_rank: score chunks, more matching words = higher score
+    # 5. JOIN files: get file_path for each chunk conn = getConnection()
+
+
+    try:
+        with conn, conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT c.chunk_id, f.file_path, c.chunk_text,
+                       c.start_line, c.end_line,
+                       ts_rank(c.text_search, q) AS score
+                FROM rag.chunks c
+                JOIN rag.files f ON f.file_id = c.file_id,
+                     to_tsquery('simple', replace(plainto_tsquery('simple', %s)::text, '&', '|')) q
+                WHERE f.repo_id = %s
+                  AND c.text_search @@ q
+                ORDER BY score DESC
+                LIMIT %s
+            """, (question, repo_id, limit))
+            return cursor.fetchall()
+    finally:
+        conn.close()
 
 def generate_answer(question, snippets):
     context = "\n\n".join(

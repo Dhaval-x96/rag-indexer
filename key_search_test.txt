@@ -1,0 +1,35 @@
+# Test queries for key_search (repo: nanocoder)
+# Format: query | expected file
+# Empty expected file = should return 0 rows.
+
+# --- identifiers (exact code names) ---
+detectLineEnding | source/tools/file-ops/line-endings.ts
+assertResolvedPublicHttpUrl | source/tools/fetch-url-guard.ts
+atomicWriteFileSync | source/utils/fs/atomic-write.ts
+ExponentialBackoff | source/utils/backoff.ts
+calculateTokenBreakdown | source/usage/calculator.ts
+filterSilenceMarkers | plugins/voice/src/stt.ts
+MAX_IMAGE_BYTES | source/input/clipboard-image.ts
+SESSION_END_HOOK_TIMEOUT_MS | source/services/lifecycle-hooks.ts
+NANOCODER_DEFAULT_SHUTDOWN_TIMEOUT | source/utils/shutdown/shutdown-manager.ts
+splitCommandForDisplay | source/terminal/shell-command-display.ts
+
+# --- short keywords ---
+cron | source/schedule/cron.ts
+bubblewrap sandbox | source/services/bash-sandbox.ts
+BLANK_AUDIO | plugins/voice/src/stt.ts
+whisper | plugins/voice/src/stt.ts
+semgrep | source/verify/security-scan.ts
+models.dev | source/models/models-dev-client.ts
+uninstall | docs/getting-started/uninstalling.md
+
+# --- full questions (plainto_tsquery needs EVERY word in one chunk) ---
+How does the bash sandbox restrict commands? | source/services/bash-sandbox.ts
+How are cron schedules parsed? | source/schedule/cron.ts
+How are secrets redacted from logs? | source/utils/logging/redaction.ts
+
+# --- should return nothing ---
+kafka |
+bcrypt |
+firebase |
+leaderboard |
