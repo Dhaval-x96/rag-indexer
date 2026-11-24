@@ -44,7 +44,7 @@ Latest run: 2026-11-24T22:50:13 | commit `d7efd2e-dirty` | mode=hybrid | MAX_DIS
 
 ## Dataset: `eval_questions.jsonl` (1449 questions)
 
-Latest run: 2026-11-24T22:51:42 | commit `d7efd2e-dirty` | mode=hybrid | MAX_DISTANCE=0.6 | CHUNK_SIZE=50 | OVERLAP=10 | RRF_K=60 | KEYWORD_WEIGHT=0.5
+Latest run: 2026-11-24T22:58:51 | commit `a64642b` | mode=hybrid | MAX_DISTANCE=0.6 | CHUNK_SIZE=50 | OVERLAP=10 | RRF_K=60 | KEYWORD_WEIGHT=0.5
 
 **Positive pass: 988/1404 = 70%** | **Negative pass: 42/45 = 93%**
 
@@ -64,6 +64,7 @@ Latest run: 2026-11-24T22:51:42 | commit `d7efd2e-dirty` | mode=hybrid | MAX_DIS
 
 | # | Date | Commit | Mode | MAX_DISTANCE | Positive pass | Δ | Negative pass | Δ | Note |
 |---:|---|---|---|---:|---:|---:|---:|---:|---|
+| 4 | 2026-11-24T22:58:51 | `a64642b` | hybrid | 0.6 | 988/1404 = 70% | +0.0 pp | 42/45 = 93% | +0.0 pp | rerun on committed code (same as previous dirty run) |
 | 3 | 2026-11-24T22:51:42 | `d7efd2e-dirty` | hybrid | 0.6 | 988/1404 = 70% | +0.2 pp | 42/45 = 93% | +0.0 pp | fix key_search double stemming (outer to_tsquery uses simple) |
 | 2 | 2026-11-24T22:42:42 | `d800110` | hybrid | 0.6 | 985/1404 = 70% | +7.8 pp | 42/45 = 93% | +0.0 pp | hybrid RRF k=60, keyword weight 0.5, english FTS (key_search double-stems, see 8adcbba) |
 | 1 | 2026-11-24T19:00:13 | `4367e3c` | vector | 0.6 | 876/1404 = 62% | - | 42/45 = 93% | - | first run on full question set |
