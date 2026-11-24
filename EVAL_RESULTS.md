@@ -16,7 +16,7 @@ python evals.py --mode vector --note "what changed"                # vector sear
 
 ## Dataset: `evals.py` (65 questions)
 
-Latest run: 2026-11-24T22:41:05 | commit `d800110` | mode=hybrid | MAX_DISTANCE=0.6 | CHUNK_SIZE=50 | OVERLAP=10 | RRF_K=60 | KEYWORD_WEIGHT=0.5
+Latest run: 2026-11-24T22:50:13 | commit `d7efd2e-dirty` | mode=hybrid | MAX_DISTANCE=0.6 | CHUNK_SIZE=50 | OVERLAP=10 | RRF_K=60 | KEYWORD_WEIGHT=0.5
 
 **Positive pass: 44/55 = 80%** | **Negative pass: 10/10 = 100%**
 
@@ -24,9 +24,9 @@ Latest run: 2026-11-24T22:41:05 | commit `d800110` | mode=hybrid | MAX_DISTANCE=
 |---|---:|---:|---:|---:|
 | direct | 12 | 83% | 83% | 0.51 |
 | paraphrase | 10 | 60% | 60% | 0.31 |
-| detail | 11 | 82% | 91% | 0.60 |
+| detail | 11 | 82% | 91% | 0.61 |
 | identifier | 6 | 100% | 100% | 0.58 |
-| docs | 5 | 100% | 100% | 0.65 |
+| docs | 5 | 100% | 100% | 0.80 |
 | ambiguous | 5 | 100% | 100% | 0.84 |
 | noisy | 6 | 50% | 67% | 0.50 |
 | neg_offtopic | 3 | 100% | - | - |
@@ -36,6 +36,7 @@ Latest run: 2026-11-24T22:41:05 | commit `d800110` | mode=hybrid | MAX_DISTANCE=
 
 | # | Date | Commit | Mode | MAX_DISTANCE | Positive pass | Δ | Negative pass | Δ | Note |
 |---:|---|---|---|---:|---:|---:|---:|---:|---|
+| 5 | 2026-11-24T22:50:13 | `d7efd2e-dirty` | hybrid | 0.6 | 44/55 = 80% | +0.0 pp | 10/10 = 100% | +0.0 pp | fix key_search double stemming (outer to_tsquery uses simple) |
 | 4 | 2026-11-24T22:41:05 | `d800110` | hybrid | 0.6 | 44/55 = 80% | +7.3 pp | 10/10 = 100% | +0.0 pp | hybrid RRF k=60, keyword weight 0.5, english FTS (key_search double-stems, see 8adcbba) |
 | 3 | 2026-11-24T18:59:02 | `4367e3c` | vector | 0.6 | 40/55 = 73% | +0.0 pp | 10/10 = 100% | +60.0 pp | MAX_DISTANCE 0.7 -> 0.6, dedupe on |
 | 2 | 2026-11-23 | `uncommitted` | vector | 0.7 | 40/55 = 73% | +1.8 pp | 4/10 = 40% | +0.0 pp | fetch 30 chunks, keep best chunk per file (backfilled) |
@@ -43,14 +44,14 @@ Latest run: 2026-11-24T22:41:05 | commit `d800110` | mode=hybrid | MAX_DISTANCE=
 
 ## Dataset: `eval_questions.jsonl` (1449 questions)
 
-Latest run: 2026-11-24T22:42:42 | commit `d800110` | mode=hybrid | MAX_DISTANCE=0.6 | CHUNK_SIZE=50 | OVERLAP=10 | RRF_K=60 | KEYWORD_WEIGHT=0.5
+Latest run: 2026-11-24T22:51:42 | commit `d7efd2e-dirty` | mode=hybrid | MAX_DISTANCE=0.6 | CHUNK_SIZE=50 | OVERLAP=10 | RRF_K=60 | KEYWORD_WEIGHT=0.5
 
-**Positive pass: 985/1404 = 70%** | **Negative pass: 42/45 = 93%**
+**Positive pass: 988/1404 = 70%** | **Negative pass: 42/45 = 93%**
 
 | Category | n | Pass | Recall@5 | MRR |
 |---|---:|---:|---:|---:|
 | detail | 450 | 74% | 75% | 0.53 |
-| paraphrase | 331 | 62% | 63% | 0.45 |
+| paraphrase | 331 | 63% | 63% | 0.45 |
 | direct | 239 | 76% | 77% | 0.56 |
 | noisy | 100 | 47% | 62% | 0.41 |
 | identifier | 96 | 62% | 73% | 0.46 |
@@ -63,5 +64,6 @@ Latest run: 2026-11-24T22:42:42 | commit `d800110` | mode=hybrid | MAX_DISTANCE=
 
 | # | Date | Commit | Mode | MAX_DISTANCE | Positive pass | Δ | Negative pass | Δ | Note |
 |---:|---|---|---|---:|---:|---:|---:|---:|---|
+| 3 | 2026-11-24T22:51:42 | `d7efd2e-dirty` | hybrid | 0.6 | 988/1404 = 70% | +0.2 pp | 42/45 = 93% | +0.0 pp | fix key_search double stemming (outer to_tsquery uses simple) |
 | 2 | 2026-11-24T22:42:42 | `d800110` | hybrid | 0.6 | 985/1404 = 70% | +7.8 pp | 42/45 = 93% | +0.0 pp | hybrid RRF k=60, keyword weight 0.5, english FTS (key_search double-stems, see 8adcbba) |
 | 1 | 2026-11-24T19:00:13 | `4367e3c` | vector | 0.6 | 876/1404 = 62% | - | 42/45 = 93% | - | first run on full question set |
