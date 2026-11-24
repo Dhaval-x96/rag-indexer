@@ -17,10 +17,15 @@ Categories:
   neg_absent   - software question, but the feature does not exist here
 """
 
+import argparse
+import json
+import subprocess
 from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
 from typing import NamedTuple
 
-from main import MAX_DISTANCE, AskRequest, search_chunk
+from main import CHUNK_SIZE, MAX_DISTANCE, OVERLAP, AskRequest, search_chunk
 
 REPO_ID = "8f34f915-9c6a-4942-a4bc-bc823c66190f"
 
@@ -110,10 +115,11 @@ EVAL_SET: list[EvalCase] = [
 ]
 
 
-def main() -> None:
+def run(cases: list[EvalCase]) -> dict[str, dict]:
+    """Run every case, print the report, and return per-category stats."""
     by_cat: dict[str, list[tuple[int | None, float, bool]]] = defaultdict(list)
 
-    for case in EVAL_SET:
+    for case in cases:
         snippets = search_chunk(REPO_ID, AskRequest(question=case.question))
         paths = [s["file_path"] for s in snippets]
         top_dist = snippets[0]["distance"] if snippets else 1.0
@@ -133,24 +139,173 @@ def main() -> None:
         if not ok:
             print("     got:", paths)
 
-    print(f"\n{'category':<13} {'n':>3} {'pass':>6} {'recall@5':>9} {'MRR':>5}  (MAX_DISTANCE={MAX_DISTANCE})")
-    pos_total = pos_pass = neg_total = neg_pass = 0
+    categories: dict[str, dict] = {}
+    print(f"\n{'category':<13} {'n':>4} {'pass':>6} {'recall@5':>9} {'MRR':>5}  (MAX_DISTANCE={MAX_DISTANCE})")
     for cat, rows in by_cat.items():
         n = len(rows)
         passed = sum(ok for _, _, ok in rows)
+        hits = sum(r is not None for r, _, _ in rows)
+        mrr = sum(1 / r for r, _, _ in rows if r) / n
+        categories[cat] = {"n": n, "passed": passed, "hits": hits, "mrr": round(mrr, 3)}
         if cat.startswith("neg_"):
-            neg_total += n
-            neg_pass += passed
-            print(f"{cat:<13} {n:>3} {passed / n:>6.0%} {'-':>9} {'-':>5}")
+            print(f"{cat:<13} {n:>4} {passed / n:>6.0%} {'-':>9} {'-':>5}")
         else:
-            pos_total += n
-            pos_pass += passed
-            hits = sum(r is not None for r, _, _ in rows)
-            mrr = sum(1 / r for r, _, _ in rows if r) / n
-            print(f"{cat:<13} {n:>3} {passed / n:>6.0%} {hits / n:>9.0%} {mrr:>5.2f}")
+            print(f"{cat:<13} {n:>4} {passed / n:>6.0%} {hits / n:>9.0%} {mrr:>5.2f}")
 
-    print(f"\nPositive pass (hit in top 5 AND not gated): {pos_pass}/{pos_total} = {pos_pass / pos_total:.0%}")
-    print(f"Negative pass (correctly said I don't know): {neg_pass}/{neg_total} = {neg_pass / neg_total:.0%}")
+    pos_pass, pos_total, neg_pass, neg_total = totals(categories)
+    print(f"\nPositive pass (hit in top 5 AND not gated): {pos_pass}/{pos_total} = {pct(pos_pass, pos_total)}")
+    print(f"Negative pass (correctly said I don't know): {neg_pass}/{neg_total} = {pct(neg_pass, neg_total)}")
+    return categories
+
+
+# ---------- history + report ----------
+
+BASE_DIR = Path(__file__).resolve().parent
+HISTORY_FILE = BASE_DIR / "eval_results" / "history.jsonl"
+REPORT_FILE = BASE_DIR / "EVAL_RESULTS.md"
+
+
+def pct(part: int, total: int) -> str:
+    return f"{part / total:.0%}" if total else "-"
+
+
+def totals(categories: dict[str, dict]) -> tuple[int, int, int, int]:
+    """Return (positive passed, positive total, negative passed, negative total)."""
+    pos = [c for name, c in categories.items() if not name.startswith("neg_")]
+    neg = [c for name, c in categories.items() if name.startswith("neg_")]
+    return (sum(c["passed"] for c in pos), sum(c["n"] for c in pos),
+            sum(c["passed"] for c in neg), sum(c["n"] for c in neg))
+
+
+def git_commit() -> str:
+    """Short HEAD sha, with -dirty if tracked code differs from it (results files ignored)."""
+    def git(*args: str) -> str:
+        return subprocess.run(["git", *args], cwd=BASE_DIR, capture_output=True,
+                              text=True, check=True).stdout.strip()
+    try:
+        sha = git("rev-parse", "--short", "HEAD")
+        dirty = git("status", "--porcelain", "--untracked-files=no", "--",
+                    ".", ":!eval_results", ":!EVAL_RESULTS.md")
+        return f"{sha}-dirty" if dirty else sha
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return "unknown"
+
+
+def load_cases(path: str) -> list[EvalCase]:
+    """Load cases from a JSONL file with category, question and expected fields."""
+    with open(path, encoding="utf-8") as f:
+        rows = [json.loads(line) for line in f if line.strip()]
+    return [EvalCase(r["category"], r["question"], tuple(r["expected"])) for r in rows]
+
+
+def load_history() -> list[dict]:
+    if not HISTORY_FILE.exists():
+        return []
+    with open(HISTORY_FILE, encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+def delta(curr: tuple[int, int], prev: tuple[int, int] | None) -> str:
+    """Change in pass rate, in percentage points."""
+    if prev is None or not curr[1] or not prev[1]:
+        return "-"
+    return f"{(curr[0] / curr[1] - prev[0] / prev[1]) * 100:+.1f} pp"
+
+
+def render_report(history: list[dict]) -> str:
+    lines = [
+        "# Retrieval Eval Results",
+        "",
+        "Auto-generated by `evals.py` from `eval_results/history.jsonl`. Do not edit by hand.",
+        "",
+        "```bash",
+        'python evals.py --note "what changed"                              # small set (built into evals.py)',
+        'python evals.py --file eval_questions.jsonl --note "what changed"  # full set',
+        "```",
+        "",
+        "- **Positive pass**: the expected file is in the top 5 results AND the top distance is <= `MAX_DISTANCE`.",
+        "- **Negative pass**: the question is about something not in the repo, and the top distance is > `MAX_DISTANCE`, so the API answers \"I don't know\".",
+        "- **Recall@5** ignores the distance gate. **MRR** is the mean of 1/rank of the first correct file.",
+        "- `backfilled` rows were recorded by hand from earlier runs, before history tracking existed.",
+    ]
+    datasets = list(dict.fromkeys(r["dataset"] for r in history))
+    for ds in datasets:
+        runs = [r for r in history if r["dataset"] == ds]
+        latest = runs[-1]
+        pp, pt, np_, nt = totals(latest["categories"])
+        lines += [
+            "",
+            f"## Dataset: `{ds}` ({latest['n_questions']} questions)",
+            "",
+            f"Latest run: {latest['date']} | commit `{latest['commit']}` | "
+            + " | ".join(f"{k}={v}" for k, v in latest["config"].items()),
+            "",
+            f"**Positive pass: {pp}/{pt} = {pct(pp, pt)}** | **Negative pass: {np_}/{nt} = {pct(np_, nt)}**",
+            "",
+            "| Category | n | Pass | Recall@5 | MRR |",
+            "|---|---:|---:|---:|---:|",
+        ]
+        for cat, c in latest["categories"].items():
+            if cat.startswith("neg_"):
+                lines.append(f"| {cat} | {c['n']} | {pct(c['passed'], c['n'])} | - | - |")
+            else:
+                lines.append(f"| {cat} | {c['n']} | {pct(c['passed'], c['n'])} | "
+                             f"{pct(c['hits'], c['n'])} | {c['mrr']:.2f} |")
+
+        lines += [
+            "",
+            "### History (newest first)",
+            "",
+            "| # | Date | Commit | MAX_DISTANCE | Positive pass | Δ | Negative pass | Δ | Note |",
+            "|---:|---|---|---:|---:|---:|---:|---:|---|",
+        ]
+        rows = []
+        prev: tuple[tuple[int, int], tuple[int, int]] | None = None
+        for i, r in enumerate(runs, start=1):
+            pp, pt, np_, nt = totals(r["categories"])
+            pos, neg = (pp, pt), (np_, nt)
+            note = r.get("note", "").replace("|", "\\|")
+            if r.get("backfilled"):
+                note = f"{note} (backfilled)".strip()
+            rows.append(
+                f"| {i} | {r['date']} | `{r['commit']}` | {r['config'].get('MAX_DISTANCE', '-')} | "
+                f"{pp}/{pt} = {pct(pp, pt)} | {delta(pos, prev[0] if prev else None)} | "
+                f"{np_}/{nt} = {pct(np_, nt)} | {delta(neg, prev[1] if prev else None)} | {note} |"
+            )
+            prev = (pos, neg)
+        lines += reversed(rows)
+    return "\n".join(lines) + "\n"
+
+
+def save_run(categories: dict[str, dict], dataset: str, n_questions: int, note: str) -> None:
+    record = {
+        "date": datetime.now().isoformat(timespec="seconds"),
+        "commit": git_commit(),
+        "dataset": dataset,
+        "n_questions": n_questions,
+        "config": {"MAX_DISTANCE": MAX_DISTANCE, "CHUNK_SIZE": CHUNK_SIZE, "OVERLAP": OVERLAP},
+        "note": note,
+        "categories": categories,
+    }
+    HISTORY_FILE.parent.mkdir(exist_ok=True)
+    with open(HISTORY_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    REPORT_FILE.write_text(render_report(load_history()), encoding="utf-8")
+    print(f"\nSaved run to {HISTORY_FILE.relative_to(BASE_DIR)} and updated {REPORT_FILE.name}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Retrieval eval with saved history.")
+    parser.add_argument("--file", help="JSONL question file (default: EVAL_SET in this file)")
+    parser.add_argument("--note", default="", help="What changed since the last run")
+    parser.add_argument("--no-save", action="store_true", help="Only print, do not update history")
+    args = parser.parse_args()
+
+    cases = load_cases(args.file) if args.file else EVAL_SET
+    dataset = Path(args.file).name if args.file else "evals.py"
+    categories = run(cases)
+    if not args.no_save:
+        save_run(categories, dataset, len(cases), args.note)
 
 
 if __name__ == "__main__":
