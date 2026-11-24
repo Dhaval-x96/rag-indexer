@@ -26,6 +26,8 @@ SKIP_SUFFIXES = (".min.js", ".min.css")
 CHUNK_SIZE=50
 OVERLAP=10
 MAX_DISTANCE = 0.6
+RRF_K=60
+KEYWORD_WEIGHT=0.5
 
 
 app = FastAPI()
@@ -44,11 +46,13 @@ def start_index(repo_id:str, background_tasks: BackgroundTasks):
 
 @app.post("/repo/{repo_id}/ask")
 def ask_question(repo_id: str, request: AskRequest):
-    snippets = search_chunk(repo_id, request)
+    # snippets = search_chunk(repo_id, request)
+
+    snippets, top_distance = hybrid_search(repo_id, request)
     
     ## USE FOR COST OPTIMIZATION
     ## ADD THREADSOLD FOR FETCHING ACCURATE  
-    if not snippets or snippets[0]["distance"] > MAX_DISTANCE:
+    if not snippets or top_distance > MAX_DISTANCE:
         return {
             "question":request.question,
             "answer":"I don't know. No relevant code found in this repo.",
@@ -59,7 +63,39 @@ def ask_question(repo_id: str, request: AskRequest):
     return {"question": request.question, "answer": answer, "snippets": snippets}
 
 
-def search_chunk(repo_id: str, request: AskRequest):
+
+def hybrid_search(repo_id: str, request: AskRequest, top_k: int = 5):
+    vector_hits = search_chunk(repo_id, request,top_files=20)
+    keyword_rows = key_search(repo_id, request.question, limit=50)
+
+    scores = {}
+    best_chunk ={}
+
+    for rank, s in enumerate(vector_hits, start=1):
+            p = s["file_path"]
+            scores[p] = scores.get(p, 0) + 1 / (RRF_K + rank)
+            best_chunk.setdefault(p, s)
+
+    seen = set()
+    rank = 0
+    for chunk_id, p, text, start, end, score in keyword_rows:
+        if p in seen:
+            continue
+        seen.add(p)
+        rank += 1
+        scores[p] = scores.get(p, 0) + KEYWORD_WEIGHT / (RRF_K + rank)
+        best_chunk.setdefault(p, {"file_path": p, "start_line": start,
+                                  "end_line": end, "code": text, "distance": None})
+        
+    ranked = sorted(scores, key=scores.get, reverse=True)[:top_k]
+    top_distance = vector_hits[0]["distance"] if vector_hits else 1.0
+
+    return [best_chunk[p] for p in ranked], top_distance
+
+
+
+
+def search_chunk(repo_id: str, request: AskRequest, top_files: int = 5):
     vector = model.encode(request.question).tolist()
     conn = getConnection()
     try:
@@ -67,7 +103,7 @@ def search_chunk(repo_id: str, request: AskRequest):
             cursor.execute("SELECT f.file_path, c.start_line, c.end_line, " \
             " c.chunk_text, e.embedding <=> %s::vector as distance FROM rag.embedding e JOIN rag.chunks c " \
             " ON  e.chunk_id = c.chunk_id JOIN rag.files f ON f.file_id = c.file_id " \
-            " WHERE f.repo_id = %s order by distance limit 30", (vector, repo_id))
+            " WHERE f.repo_id = %s order by distance limit 100", (vector, repo_id))
             rows = cursor.fetchall()
     finally:
         conn.close()
@@ -84,7 +120,7 @@ def search_chunk(repo_id: str, request: AskRequest):
                          "end_line": e,
                          "code": text,
                          "distance": d})
-        if len(snippets) == 5:
+        if len(snippets) == top_files:
             break
     return snippets
 
@@ -98,8 +134,7 @@ def key_search(repo_id,question, limit=20):
     # 3. @@: keep chunks that contain at least one word (uses GIN index)
     # 4. ts_rank: score chunks, more matching words = higher score
     # 5. JOIN files: get file_path for each chunk conn = getConnection()
-
-
+    
     try:
         with conn, conn.cursor() as cursor:
             cursor.execute("""
@@ -108,7 +143,7 @@ def key_search(repo_id,question, limit=20):
                        ts_rank(c.text_search, q) AS score
                 FROM rag.chunks c
                 JOIN rag.files f ON f.file_id = c.file_id,
-                     to_tsquery('simple', replace(plainto_tsquery('simple', %s)::text, '&', '|')) q
+                     to_tsquery('english', replace(plainto_tsquery('english', %s)::text, '&', '|')) q
                 WHERE f.repo_id = %s
                   AND c.text_search @@ q
                 ORDER BY score DESC
