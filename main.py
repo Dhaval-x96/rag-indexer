@@ -29,6 +29,22 @@ MAX_DISTANCE = 0.6
 RRF_K=60
 KEYWORD_WEIGHT=0.5
 
+TEST_FOLDERS = ["test", "tests", "__tests__", "spec"]
+
+TEST_FILE_ENDINGS = [
+    ".spec.ts", ".spec.tsx", ".spec.js", ".spec.jsx",   # JavaScript / TypeScript
+    ".test.ts", ".test.tsx", ".test.js", ".test.jsx",
+    "_test.go",                                         # Go
+    "_test.py",                                         # Python
+    "_spec.rb",                                         # Ruby
+    "Test.java", "Tests.java", "IT.java",               # Java
+    "Test.kt", "Tests.kt",                              # Kotlin
+    "Tests.cs",                                         # C#
+    "Test.php",                                         # PHP
+]
+
+TEST_WORDS = ["test", "tests", "testing", "tested", "spec", "specs",
+              "mock", "mocks", "coverage", "jest", "vitest", "pytest", "junit"]
 
 app = FastAPI()
 
@@ -65,8 +81,9 @@ def ask_question(repo_id: str, request: AskRequest):
 
 
 def hybrid_search(repo_id: str, request: AskRequest, top_k: int = 5):
-    vector_hits = search_chunk(repo_id, request,top_files=20)
-    keyword_rows = key_search(repo_id, request.question, limit=50)
+    include_test = want_test(request.question)
+    vector_hits = search_chunk(repo_id, request,top_files=20, include_tests=include_test)
+    keyword_rows = key_search(repo_id, request.question, limit=50, include_tests=include_test)
 
     scores = {}
     best_chunk ={}
@@ -93,17 +110,19 @@ def hybrid_search(repo_id: str, request: AskRequest, top_k: int = 5):
     return [best_chunk[p] for p in ranked], top_distance
 
 
-
-
-def search_chunk(repo_id: str, request: AskRequest, top_files: int = 5):
+def search_chunk(repo_id: str, request: AskRequest, top_files: int = 5, include_tests:bool = False):
     vector = model.encode(request.question).tolist()
-    conn = getConnection()
+    test_filter = ""
+    if not include_tests:
+        test_filter = " AND NOT f.is_test"
+
+    conn = getConnection()   
     try:
         with conn, conn.cursor() as cursor:
             cursor.execute("SELECT f.file_path, c.start_line, c.end_line, " \
             " c.chunk_text, e.embedding <=> %s::vector as distance FROM rag.embedding e JOIN rag.chunks c " \
             " ON  e.chunk_id = c.chunk_id JOIN rag.files f ON f.file_id = c.file_id " \
-            " WHERE f.repo_id = %s order by distance limit 100", (vector, repo_id))
+            " WHERE f.repo_id = %s " +test_filter + " order by distance limit 100", (vector, repo_id))
             rows = cursor.fetchall()
     finally:
         conn.close()
@@ -126,15 +145,18 @@ def search_chunk(repo_id: str, request: AskRequest, top_files: int = 5):
 
 
 
-def key_search(repo_id,question, limit=20):
-    conn = getConnection()
+def key_search(repo_id,question, limit=20, include_tests = False):
     # Steps:
     # 1. plainto_tsquery: split question into words -> 'bash' & 'sandbox'
     # 2. replace & with |: any word can match -> 'bash' | 'sandbox'
     # 3. @@: keep chunks that contain at least one word (uses GIN index)
     # 4. ts_rank: score chunks, more matching words = higher score
     # 5. JOIN files: get file_path for each chunk conn = getConnection()
+    test_filter = ""
+    if not include_tests:
+        test_filter = "AND NOT f.is_test"
     
+    conn = getConnection()
     try:
         with conn, conn.cursor() as cursor:
             cursor.execute("""
@@ -143,8 +165,8 @@ def key_search(repo_id,question, limit=20):
                        ts_rank(c.text_search, q) AS score
                 FROM rag.chunks c
                 JOIN rag.files f ON f.file_id = c.file_id,
-                     to_tsquery('simple', replace(plainto_tsquery('english', %s)::text, '&', '|')) q
-                WHERE f.repo_id = %s
+                     to_tsquery('simple ', replace(plainto_tsquery('english', %s)::text, '&', '|')) q
+                WHERE f.repo_id = %s"""+  test_filter  + """
                   AND c.text_search @@ q
                 ORDER BY score DESC
                 LIMIT %s
@@ -303,15 +325,43 @@ def find_file_path(temp_dir):
             ext = os.path.splitext(file)[1]
             if ext in ALLOWED_EXTENSIONS and not file.endswith(SKIP_SUFFIXES):
                 rel_path = os.path.relpath(os.path.join(root, file), temp_dir)
-                paths.append((rel_path, ext.lstrip(".")))
+                paths.append((rel_path, ext.lstrip("."), is_test_file(rel_path)))
     return paths
 
 
 def save_files(cursor, repo_id, paths):
     return execute_values(
             cursor,
-            "INSERT INTO rag.files (repo_id, file_path, extension) VALUES %s RETURNING file_id, file_path",
-            [(repo_id, path,ext) for path, ext in paths],
+            "INSERT INTO rag.files (repo_id, file_path, extension, is_test) VALUES %s RETURNING file_id, file_path",
+            [(repo_id, path,ext,is_test) for path, ext,is_test in paths],
             fetch=True
         )
 
+
+
+def is_test_file(path):
+    path = path.replace("\\", "/")
+    folders = path.split("/")[:-1]
+    file_name = path.split("/")[-1]
+        
+    for folder in folders:
+        if folder.lower() in TEST_FOLDERS:
+            return True
+
+    if file_name.startswith("test_") and file_name.endswith(".py"):
+        return True
+
+    for ending in TEST_FILE_ENDINGS:
+        if file_name.endswith(ending):
+            return True
+
+    return False
+
+
+def want_test(questions) -> bool:
+    words = questions.lower().split()
+    for word in words:
+        word = word.strip("?.,!:;\"'()")
+        if word in TEST_WORDS:
+            return True
+    return False
