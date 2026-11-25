@@ -116,7 +116,7 @@ EVAL_SET: list[EvalCase] = [
 ]
 
 
-def run(cases: list[EvalCase], mode: str = "hybrid") -> dict[str, dict]:
+def run(cases: list[EvalCase], mode: str = "hybrid", repo_id: str = REPO_ID) -> dict[str, dict]:
     """Run every case, print the report, and return per-category stats."""
     by_cat: dict[str, list[tuple[int | None, float, bool]]] = defaultdict(list)
 
@@ -124,9 +124,9 @@ def run(cases: list[EvalCase], mode: str = "hybrid") -> dict[str, dict]:
         request = AskRequest(question=case.question)
         if mode == "hybrid":
             # Same as ask_question: gate on the top vector distance, not the fused list.
-            snippets, top_dist = hybrid_search(REPO_ID, request)
+            snippets, top_dist = hybrid_search(repo_id, request)
         else:
-            snippets = search_chunk(REPO_ID, request)
+            snippets = search_chunk(repo_id, request)
             top_dist = snippets[0]["distance"] if snippets else 1.0
         paths = [s["file_path"] for s in snippets]
         gated = top_dist > MAX_DISTANCE  # ask_question would answer "I don't know"
@@ -288,7 +288,7 @@ def render_report(history: list[dict]) -> str:
 
 
 def save_run(categories: dict[str, dict], dataset: str, n_questions: int, note: str,
-             mode: str) -> None:
+             mode: str, repo_id: str) -> None:
     config: dict = {"mode": mode, "MAX_DISTANCE": MAX_DISTANCE,
                     "CHUNK_SIZE": CHUNK_SIZE, "OVERLAP": OVERLAP}
     if mode == "hybrid":
@@ -297,6 +297,7 @@ def save_run(categories: dict[str, dict], dataset: str, n_questions: int, note: 
         "date": datetime.now().isoformat(timespec="seconds"),
         "commit": git_commit(),
         "dataset": dataset,
+        "repo_id": repo_id,
         "n_questions": n_questions,
         "config": config,
         "note": note,
@@ -316,13 +317,15 @@ def main() -> None:
     parser.add_argument("--no-save", action="store_true", help="Only print, do not update history")
     parser.add_argument("--mode", choices=["hybrid", "vector"], default="hybrid",
                         help="hybrid_search (what ask_question uses) or search_chunk only")
+    parser.add_argument("--repo-id", default=REPO_ID,
+                        help="Indexed repo to search (default: nanocoder)")
     args = parser.parse_args()
 
     cases = load_cases(args.file) if args.file else EVAL_SET
     dataset = Path(args.file).name if args.file else "evals.py"
-    categories = run(cases, args.mode)
+    categories = run(cases, args.mode, args.repo_id)
     if not args.no_save:
-        save_run(categories, dataset, len(cases), args.note, args.mode)
+        save_run(categories, dataset, len(cases), args.note, args.mode, args.repo_id)
 
 
 if __name__ == "__main__":
