@@ -16,19 +16,19 @@ python evals.py --mode vector --note "what changed"                # vector sear
 
 ## Dataset: `evals.py` (65 questions)
 
-Latest run: 2026-11-24T22:50:13 | commit `d7efd2e-dirty` | mode=hybrid | MAX_DISTANCE=0.6 | CHUNK_SIZE=50 | OVERLAP=10 | RRF_K=60 | KEYWORD_WEIGHT=0.5
+Latest run: 2026-11-25T23:07:30 | commit `a779561` | mode=hybrid | MAX_DISTANCE=0.6 | CHUNK_SIZE=50 | OVERLAP=10 | RRF_K=60 | KEYWORD_WEIGHT=0.5
 
-**Positive pass: 44/55 = 80%** | **Negative pass: 10/10 = 100%**
+**Positive pass: 45/55 = 82%** | **Negative pass: 10/10 = 100%**
 
 | Category | n | Pass | Recall@5 | MRR |
 |---|---:|---:|---:|---:|
-| direct | 12 | 83% | 83% | 0.51 |
-| paraphrase | 10 | 60% | 60% | 0.31 |
-| detail | 11 | 82% | 91% | 0.61 |
-| identifier | 6 | 100% | 100% | 0.58 |
+| direct | 12 | 92% | 92% | 0.65 |
+| paraphrase | 10 | 60% | 60% | 0.36 |
+| detail | 11 | 82% | 91% | 0.65 |
+| identifier | 6 | 100% | 100% | 1.00 |
 | docs | 5 | 100% | 100% | 0.80 |
 | ambiguous | 5 | 100% | 100% | 0.84 |
-| noisy | 6 | 50% | 67% | 0.50 |
+| noisy | 6 | 50% | 67% | 0.46 |
 | neg_offtopic | 3 | 100% | - | - |
 | neg_absent | 7 | 100% | - | - |
 
@@ -36,6 +36,7 @@ Latest run: 2026-11-24T22:50:13 | commit `d7efd2e-dirty` | mode=hybrid | MAX_DIS
 
 | # | Date | Commit | Mode | MAX_DISTANCE | Positive pass | Δ | Negative pass | Δ | Note |
 |---:|---|---|---|---:|---:|---:|---:|---:|---|
+| 6 | 2026-11-25T23:07:30 | `a779561` | hybrid | 0.6 | 45/55 = 82% | +1.8 pp | 10/10 = 100% | +0.0 pp | rerun on current code: hybrid + test-file filter |
 | 5 | 2026-11-24T22:50:13 | `d7efd2e-dirty` | hybrid | 0.6 | 44/55 = 80% | +0.0 pp | 10/10 = 100% | +0.0 pp | fix key_search double stemming (outer to_tsquery uses simple) |
 | 4 | 2026-11-24T22:41:05 | `d800110` | hybrid | 0.6 | 44/55 = 80% | +7.3 pp | 10/10 = 100% | +0.0 pp | hybrid RRF k=60, keyword weight 0.5, english FTS (key_search double-stems, see 8adcbba) |
 | 3 | 2026-11-24T18:59:02 | `4367e3c` | vector | 0.6 | 40/55 = 73% | +0.0 pp | 10/10 = 100% | +60.0 pp | MAX_DISTANCE 0.7 -> 0.6, dedupe on |
