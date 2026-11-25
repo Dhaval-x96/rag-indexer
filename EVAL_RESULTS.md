@@ -71,3 +71,53 @@ Latest run: 2026-11-25T20:19:20 | commit `77c09ac-dirty` | mode=hybrid | MAX_DIS
 | 3 | 2026-11-24T22:51:42 | `d7efd2e-dirty` | hybrid | 0.6 | 988/1404 = 70% | +0.2 pp | 42/45 = 93% | +0.0 pp | fix key_search double stemming (outer to_tsquery uses simple) |
 | 2 | 2026-11-24T22:42:42 | `d800110` | hybrid | 0.6 | 985/1404 = 70% | +7.8 pp | 42/45 = 93% | +0.0 pp | hybrid RRF k=60, keyword weight 0.5, english FTS (key_search double-stems, see 8adcbba) |
 | 1 | 2026-11-24T19:00:13 | `4367e3c` | vector | 0.6 | 876/1404 = 62% | - | 42/45 = 93% | - | first run on full question set |
+
+## Dataset: `eval_questions_commons_lang.jsonl` (332 questions)
+
+Latest run: 2026-11-25T21:23:05 | commit `b04e6ac-dirty` | mode=hybrid | MAX_DISTANCE=0.6 | CHUNK_SIZE=50 | OVERLAP=10 | RRF_K=60 | KEYWORD_WEIGHT=0.5
+
+**Positive pass: 278/310 = 90%** | **Negative pass: 18/22 = 82%**
+
+| Category | n | Pass | Recall@5 | MRR |
+|---|---:|---:|---:|---:|
+| docs | 4 | 75% | 75% | 0.75 |
+| paraphrase | 81 | 85% | 89% | 0.77 |
+| detail | 89 | 91% | 94% | 0.84 |
+| direct | 67 | 96% | 96% | 0.84 |
+| noisy | 24 | 88% | 96% | 0.92 |
+| identifier | 25 | 80% | 88% | 0.85 |
+| ambiguous | 20 | 100% | 100% | 0.93 |
+| neg_offtopic | 8 | 100% | - | - |
+| neg_absent | 14 | 71% | - | - |
+
+### History (newest first)
+
+| # | Date | Commit | Mode | MAX_DISTANCE | Positive pass | Δ | Negative pass | Δ | Note |
+|---:|---|---|---|---:|---:|---:|---:|---:|---|
+| 2 | 2026-11-25T21:23:05 | `b04e6ac-dirty` | hybrid | 0.6 | 278/310 = 90% | -2.3 pp | 18/22 = 82% | +0.0 pp | commons-lang: hybrid + test filter (same config as nanocoder) |
+| 1 | 2026-11-25T21:22:34 | `b04e6ac-dirty` | vector | 0.6 | 285/310 = 92% | - | 18/22 = 82% | - | commons-lang baseline: vector only |
+
+## Dataset: `eval_questions_cli.jsonl` (469 questions)
+
+Latest run: 2026-11-25T22:07:28 | commit `b04e6ac-dirty` | mode=hybrid | MAX_DISTANCE=0.6 | CHUNK_SIZE=50 | OVERLAP=10 | RRF_K=60 | KEYWORD_WEIGHT=0.5
+
+**Positive pass: 317/452 = 70%** | **Negative pass: 15/17 = 88%**
+
+| Category | n | Pass | Recall@5 | MRR |
+|---|---:|---:|---:|---:|
+| detail | 130 | 69% | 70% | 0.53 |
+| paraphrase | 99 | 68% | 71% | 0.53 |
+| direct | 99 | 78% | 78% | 0.63 |
+| identifier | 35 | 63% | 94% | 0.91 |
+| noisy | 33 | 45% | 70% | 0.52 |
+| ambiguous | 26 | 73% | 77% | 0.58 |
+| docs | 30 | 90% | 90% | 0.82 |
+| neg_offtopic | 8 | 100% | - | - |
+| neg_absent | 9 | 78% | - | - |
+
+### History (newest first)
+
+| # | Date | Commit | Mode | MAX_DISTANCE | Positive pass | Δ | Negative pass | Δ | Note |
+|---:|---|---|---|---:|---:|---:|---:|---:|---|
+| 2 | 2026-11-25T22:07:28 | `b04e6ac-dirty` | hybrid | 0.6 | 317/452 = 70% | +1.8 pp | 15/17 = 88% | +0.0 pp | cli/cli: hybrid + test filter (same config as nanocoder) |
+| 1 | 2026-11-25T22:06:27 | `b04e6ac-dirty` | vector | 0.6 | 309/452 = 68% | - | 15/17 = 88% | - | cli/cli baseline: vector only |
