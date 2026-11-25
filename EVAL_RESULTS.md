@@ -42,28 +42,31 @@ Latest run: 2026-11-24T22:50:13 | commit `d7efd2e-dirty` | mode=hybrid | MAX_DIS
 | 2 | 2026-11-23 | `uncommitted` | vector | 0.7 | 40/55 = 73% | +1.8 pp | 4/10 = 40% | +0.0 pp | fetch 30 chunks, keep best chunk per file (backfilled) |
 | 1 | 2026-11-23 | `uncommitted` | vector | 0.7 | 39/55 = 71% | - | 4/10 = 40% | - | baseline: top 5 chunks, no per-file dedupe (backfilled) |
 
-## Dataset: `eval_questions.jsonl` (1449 questions)
+## Dataset: `eval_questions.jsonl` (1455 questions)
 
-Latest run: 2026-11-24T22:58:51 | commit `a64642b` | mode=hybrid | MAX_DISTANCE=0.6 | CHUNK_SIZE=50 | OVERLAP=10 | RRF_K=60 | KEYWORD_WEIGHT=0.5
+Latest run: 2026-11-25T20:19:20 | commit `77c09ac-dirty` | mode=hybrid | MAX_DISTANCE=0.6 | CHUNK_SIZE=50 | OVERLAP=10 | RRF_K=60 | KEYWORD_WEIGHT=0.5
 
-**Positive pass: 988/1404 = 70%** | **Negative pass: 42/45 = 93%**
+**Positive pass: 1028/1410 = 73%** | **Negative pass: 42/45 = 93%**
 
 | Category | n | Pass | Recall@5 | MRR |
 |---|---:|---:|---:|---:|
-| detail | 450 | 74% | 75% | 0.53 |
-| paraphrase | 331 | 63% | 63% | 0.45 |
-| direct | 239 | 76% | 77% | 0.56 |
-| noisy | 100 | 47% | 62% | 0.41 |
-| identifier | 96 | 62% | 73% | 0.46 |
-| ambiguous | 27 | 78% | 78% | 0.49 |
-| docs | 161 | 85% | 85% | 0.69 |
+| detail | 450 | 77% | 79% | 0.57 |
+| paraphrase | 331 | 66% | 67% | 0.49 |
+| direct | 239 | 79% | 80% | 0.60 |
+| noisy | 100 | 51% | 71% | 0.50 |
+| identifier | 96 | 57% | 79% | 0.67 |
+| ambiguous | 27 | 78% | 78% | 0.53 |
+| docs | 161 | 87% | 87% | 0.71 |
 | neg_offtopic | 14 | 100% | - | - |
 | neg_absent | 31 | 90% | - | - |
+| tests | 6 | 83% | 83% | 0.49 |
 
 ### History (newest first)
 
 | # | Date | Commit | Mode | MAX_DISTANCE | Positive pass | Δ | Negative pass | Δ | Note |
 |---:|---|---|---|---:|---:|---:|---:|---:|---|
+| 6 | 2026-11-25T20:19:20 | `77c09ac-dirty` | hybrid | 0.6 | 1028/1410 = 73% | +0.0 pp | 42/45 = 93% | +0.0 pp | add 6 tests-category questions (expected answer is a test file) |
+| 5 | 2026-11-25T20:17:38 | `77c09ac-dirty` | hybrid | 0.6 | 1023/1404 = 73% | +2.5 pp | 42/45 = 93% | +0.0 pp | exclude test files via is_test, unless the question asks about tests |
 | 4 | 2026-11-24T22:58:51 | `a64642b` | hybrid | 0.6 | 988/1404 = 70% | +0.0 pp | 42/45 = 93% | +0.0 pp | rerun on committed code (same as previous dirty run) |
 | 3 | 2026-11-24T22:51:42 | `d7efd2e-dirty` | hybrid | 0.6 | 988/1404 = 70% | +0.2 pp | 42/45 = 93% | +0.0 pp | fix key_search double stemming (outer to_tsquery uses simple) |
 | 2 | 2026-11-24T22:42:42 | `d800110` | hybrid | 0.6 | 985/1404 = 70% | +7.8 pp | 42/45 = 93% | +0.0 pp | hybrid RRF k=60, keyword weight 0.5, english FTS (key_search double-stems, see 8adcbba) |

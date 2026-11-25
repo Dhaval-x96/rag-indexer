@@ -1447,3 +1447,9 @@
 {"category": "neg_absent", "question": "user ka OTP SMS se kaise verify hota hai?", "expected": [], "evidence": "grep probes (word match): 0 hits in indexed files"}
 {"category": "neg_absent", "question": "How does the Celery worker schedule background jobs?", "expected": [], "evidence": "grep probes (word match): 0 hits in indexed files"}
 {"category": "neg_absent", "question": "How does the app connect to a Cassandra cluster?", "expected": [], "evidence": "grep probes (word match): 0 hits in indexed files"}
+{"category": "tests", "question": "Where are the tests for the fetch URL guard?", "expected": ["source/tools/fetch-url-guard.spec.ts"], "evidence": "spec file for fetch-url-guard.ts"}
+{"category": "tests", "question": "What test cases cover cron expression validation?", "expected": ["source/schedule/cron.spec.ts"], "evidence": "spec file for cron.ts"}
+{"category": "tests", "question": "How is fuzzy matching tested?", "expected": ["source/utils/fuzzy-matching.spec.ts"], "evidence": "spec file for fuzzy-matching.ts"}
+{"category": "tests", "question": "Which tests check that secrets are redacted in logs?", "expected": ["source/utils/logging/redaction.spec.ts"], "evidence": "spec file for redaction.ts"}
+{"category": "tests", "question": "exponential backoff ke tests kahan hain?", "expected": ["source/utils/backoff.spec.ts"], "evidence": "spec file for backoff.ts"}
+{"category": "tests", "question": "Show me the unit tests for line ending detection", "expected": ["source/tools/file-ops/line-endings.spec.ts"], "evidence": "spec file for line-endings.ts"}
